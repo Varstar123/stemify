@@ -190,6 +190,19 @@ def _run_separation(job_id, input_path: Path):
             pass
 
 
+@app.errorhandler(Exception)
+def handle_uncaught(exc):
+    # Without this, an unhandled exception falls through to Flask's default
+    # HTML error page, and the frontend's res.json() call on it throws a
+    # confusing "Unexpected token '<'" instead of surfacing the real error.
+    from werkzeug.exceptions import HTTPException
+
+    if isinstance(exc, HTTPException):
+        return jsonify({"error": exc.description}), exc.code
+    app.logger.exception("Unhandled error")
+    return jsonify({"error": f"Server error: {exc}"}), 500
+
+
 @app.route("/")
 def index():
     return send_from_directory(FRONTEND_DIR, "index.html")
