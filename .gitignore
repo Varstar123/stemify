@@ -1,0 +1,16 @@
+# Python virtual environment
+.venv/
+
+# Runtime data (per-job uploads and separated output audio)
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db

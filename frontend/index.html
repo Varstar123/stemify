@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stemify — Karaoke Maker</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-border: #262b36;
+    --accent: #7c5cff;
+    --accent-2: #21d4a3;
+    --text: #e8e9ee;
+    --text-dim: #9297a6;
+    --danger: #ff5c72;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 20% 0%, #1b1f2a 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 20px 80px;
+  }
+  header { text-align: center; margin-bottom: 36px; }
+  header h1 {
+    font-size: 1.9rem;
+    margin: 0 0 8px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.02em;
+  }
+  header p { color: var(--text-dim); margin: 0; font-size: 0.98rem; }
+
+  .card {
+    width: 100%;
+    max-width: 560px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 20px 60px -20px rgba(0,0,0,0.5);
+  }
+
+  #dropzone {
+    border: 2px dashed var(--panel-border);
+    border-radius: 12px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #dropzone.drag { border-color: var(--accent); background: rgba(124,92,255,0.06); }
+  #dropzone svg { opacity: 0.7; margin-bottom: 10px; }
+  #dropzone .hint { color: var(--text-dim); font-size: 0.85rem; margin-top: 6px; }
+  #fileInput { display: none; }
+
+  #fileInfo {
+    display: none;
+    margin-top: 16px;
+    padding: 12px 14px;
+    background: #12141a;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    font-size: 0.9rem;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #fileInfo span.name { color: var(--text); }
+  #fileInfo span.size { color: var(--text-dim); }
+
+  button#submitBtn {
+    width: 100%;
+    margin-top: 18px;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(90deg, var(--accent), #6a4bff);
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+  }
+  button#submitBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+  button#submitBtn:not(:disabled):hover { transform: translateY(-1px); }
+
+  #status {
+    margin-top: 20px;
+    display: none;
+  }
+  #status .row { display: flex; align-items: center; gap: 10px; color: var(--text-dim); font-size: 0.9rem; margin-bottom: 12px; }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--panel-border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #progressTrack {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: #12141a;
+    border: 1px solid var(--panel-border);
+    overflow: hidden;
+  }
+  #progressFill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 0.4s ease;
+  }
+  #progressPct {
+    margin-top: 8px;
+    text-align: right;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  #result {
+    display: none;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--panel-border);
+  }
+  #result h3 { margin: 0 0 12px; color: var(--accent-2); font-size: 1rem; }
+  audio { width: 100%; margin-bottom: 14px; }
+  a#downloadLink {
+    display: block;
+    text-align: center;
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--accent-2);
+    color: #06231a;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  #errorBox {
+    display: none;
+    margin-top: 16px;
+    padding: 12px 14px;
+    background: rgba(255,92,114,0.08);
+    border: 1px solid rgba(255,92,114,0.35);
+    color: var(--danger);
+    border-radius: 10px;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+  }
+
+  footer { margin-top: 28px; color: var(--text-dim); font-size: 0.78rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎤 Stemify</h1>
+  <p>Upload a song — get back the instrumental for karaoke.</p>
+</header>
+
+<div class="card">
+  <div id="dropzone">
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" stroke-width="1.6">
+      <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>Drag & drop an audio file, or click to browse</div>
+    <div class="hint">MP3, WAV, M4A, FLAC — up to 60MB</div>
+  </div>
+  <input type="file" id="fileInput" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac,.wma">
+
+  <div id="fileInfo">
+    <span class="name" id="fileName"></span>
+    <span class="size" id="fileSize"></span>
+  </div>
+
+  <button id="submitBtn" disabled>Remove vocals</button>
+
+  <div id="status">
+    <div class="row"><div class="spinner"></div><span id="statusText">Processing...</span></div>
+    <div id="progressTrack"><div id="progressFill"></div></div>
+    <div id="progressPct">0%</div>
+  </div>
+
+  <div id="errorBox"></div>
+
+  <div id="result">
+    <h3>✅ Instrumental ready</h3>
+    <audio id="resultAudio" controls></audio>
+    <a id="downloadLink" download>Download MP3</a>
+  </div>
+</div>
+
+<footer>Runs Demucs (AI source separation) locally on this server. Larger files take longer to process.</footer>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileInfo = document.getElementById('fileInfo');
+const fileNameEl = document.getElementById('fileName');
+const fileSizeEl = document.getElementById('fileSize');
+const submitBtn = document.getElementById('submitBtn');
+const statusBox = document.getElementById('status');
+const statusText = document.getElementById('statusText');
+const progressFill = document.getElementById('progressFill');
+const progressPct = document.getElementById('progressPct');
+const errorBox = document.getElementById('errorBox');
+const resultBox = document.getElementById('result');
+const resultAudio = document.getElementById('resultAudio');
+const downloadLink = document.getElementById('downloadLink');
+
+let selectedFile = null;
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) setFile(fileInput.files[0]);
+});
+
+function setFile(file) {
+  selectedFile = file;
+  fileNameEl.textContent = file.name;
+  fileSizeEl.textContent = (file.size / (1024*1024)).toFixed(1) + ' MB';
+  fileInfo.style.display = 'flex';
+  submitBtn.disabled = false;
+  resultBox.style.display = 'none';
+  errorBox.style.display = 'none';
+}
+
+function formatBytes(n) { return (n/(1024*1024)).toFixed(1) + ' MB'; }
+
+submitBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  submitBtn.disabled = true;
+  errorBox.style.display = 'none';
+  resultBox.style.display = 'none';
+  statusBox.style.display = 'block';
+  statusText.textContent = 'Uploading...';
+  setProgress(0);
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+
+  try {
+    const res = await fetch('/api/jobs', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+    const jobId = data.job_id;
+    statusText.textContent = 'Separating vocals (this can take a while)...';
+    await pollJob(jobId);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+async function pollJob(jobId) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2500));
+    const res = await fetch(`/api/jobs/${jobId}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Job lookup failed');
+
+    if (data.status === 'error') {
+      throw new Error(data.error || 'Separation failed');
+    }
+    if (data.status === 'done') {
+      setProgress(100);
+      statusBox.style.display = 'none';
+      const url = `/api/jobs/${jobId}/download`;
+      resultAudio.src = url;
+      downloadLink.href = url;
+      resultBox.style.display = 'block';
+      return;
+    }
+    statusText.textContent = data.progress || 'Processing...';
+    setProgress(data.percent || 0);
+  }
+}
+
+function setProgress(pct) {
+  pct = Math.max(0, Math.min(100, pct));
+  progressFill.style.width = pct + '%';
+  progressPct.textContent = pct + '%';
+}
+
+function showError(msg) {
+  statusBox.style.display = 'none';
+  errorBox.textContent = msg;
+  errorBox.style.display = 'block';
+}
+</script>
+
+</body>
+</html>
