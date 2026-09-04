@@ -14,6 +14,10 @@ AI music source separation model) running locally on your machine.
 
 Everything runs locally — no audio leaves your machine.
 
+Want it running on your phone instead? See [MOBILE.md](MOBILE.md) for
+Android setup via Termux (no server, no hosting — the phone runs it
+entirely on-device).
+
 ## First-time setup
 
 Already done for you in this repo:
