@@ -51,21 +51,27 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 _jobs = {}
 _jobs_lock = threading.Lock()
 
-# Make the bundled portable ffmpeg (from imageio-ffmpeg) discoverable as
-# "ffmpeg" on PATH for demucs' internal subprocess calls, without needing a
-# system-wide ffmpeg install.
-_FFMPEG_EXE = Path(imageio_ffmpeg.get_ffmpeg_exe())
-_ffmpeg_dir = str(_FFMPEG_EXE.parent)
-if _ffmpeg_dir not in os.environ.get("PATH", ""):
-    os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
-_ffmpeg_link = _FFMPEG_EXE.parent / (
-    "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-)
-if not _ffmpeg_link.exists():
-    try:
-        shutil.copy(_FFMPEG_EXE, _ffmpeg_link)
-    except OSError:
-        pass
+# Prefer a real system ffmpeg when one is already installed (e.g. Termux's
+# `pkg install ffmpeg` on Android, or apt on Linux) — it matches the host
+# architecture natively. Only fall back to the portable binary bundled via
+# imageio-ffmpeg (Windows-focused prebuilt binaries) if no system ffmpeg is
+# found on PATH.
+_system_ffmpeg = shutil.which("ffmpeg")
+if _system_ffmpeg:
+    _FFMPEG_EXE = Path(_system_ffmpeg)
+else:
+    _FFMPEG_EXE = Path(imageio_ffmpeg.get_ffmpeg_exe())
+    _ffmpeg_dir = str(_FFMPEG_EXE.parent)
+    if _ffmpeg_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+    _ffmpeg_link = _FFMPEG_EXE.parent / (
+        "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    )
+    if not _ffmpeg_link.exists():
+        try:
+            shutil.copy(_FFMPEG_EXE, _ffmpeg_link)
+        except OSError:
+            pass
 
 
 def _set_status(job_id, **fields):
