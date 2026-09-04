@@ -4,103 +4,129 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stemify — Karaoke Maker</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B0B0B'/%3E%3Crect x='4' y='13' width='3.6' height='10' rx='1.4' fill='%23EE3A2F'/%3E%3Crect x='10.2' y='9' width='3.6' height='14' rx='1.4' fill='%23EE3A2F'/%3E%3Crect x='16.4' y='4.5' width='3.6' height='18.5' rx='1.4' fill='%23EE3A2F'/%3E%3Crect x='22.6' y='11' width='3.6' height='12' rx='1.4' fill='%23EE3A2F'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --panel-border: #262b36;
-    --accent: #7c5cff;
-    --accent-2: #21d4a3;
-    --text: #e8e9ee;
-    --text-dim: #9297a6;
-    --danger: #ff5c72;
+    --paper: #fafaf9;
+    --surface: #ffffff;
+    --ink: #111111;
+    --grey: #767676;
+    --grey-light: #a3a3a3;
+    --line: #e4e2df;
+    --red: #e8302a;
+    --red-dark: #c21f1a;
+    --red-wash: #fdecea;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     min-height: 100vh;
-    background: radial-gradient(circle at 20% 0%, #1b1f2a 0%, var(--bg) 55%);
-    color: var(--text);
-    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Space Grotesk", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 48px 20px 80px;
+    padding: 64px 20px 72px;
   }
-  header { text-align: center; margin-bottom: 36px; }
-  header h1 {
-    font-size: 1.9rem;
-    margin: 0 0 8px;
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    letter-spacing: -0.02em;
+
+  header { text-align: center; margin-bottom: 30px; }
+  .wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 14px;
   }
-  header p { color: var(--text-dim); margin: 0; font-size: 0.98rem; }
+  .wordmark svg { display: block; flex-shrink: 0; }
+  .wordmark span {
+    font-size: clamp(2.2rem, 6vw, 3rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+  }
+  header p {
+    color: var(--grey);
+    margin: 0 auto;
+    font-size: 1.02rem;
+    font-weight: 500;
+    max-width: 34ch;
+  }
+
+  .rule {
+    width: 100%;
+    max-width: 560px;
+    height: 1px;
+    background: var(--line);
+    margin: 0 0 32px;
+  }
 
   .card {
     width: 100%;
     max-width: 560px;
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 16px;
-    padding: 28px;
-    box-shadow: 0 20px 60px -20px rgba(0,0,0,0.5);
+    background: var(--surface);
+    border: 1.5px solid var(--ink);
+    border-radius: 6px;
+    padding: 30px;
   }
 
   #dropzone {
-    border: 2px dashed var(--panel-border);
-    border-radius: 12px;
+    border: 1.5px dashed var(--line);
+    border-radius: 4px;
     padding: 40px 20px;
     text-align: center;
     cursor: pointer;
     transition: border-color .15s, background .15s;
   }
-  #dropzone.drag { border-color: var(--accent); background: rgba(124,92,255,0.06); }
-  #dropzone svg { opacity: 0.7; margin-bottom: 10px; }
-  #dropzone .hint { color: var(--text-dim); font-size: 0.85rem; margin-top: 6px; }
+  #dropzone.drag { border-color: var(--red); background: var(--red-wash); }
+  #dropzone svg { margin-bottom: 12px; }
+  #dropzone div:not(.hint) { font-size: 1rem; font-weight: 500; }
+  #dropzone .hint { color: var(--grey); font-size: 0.85rem; margin-top: 8px; font-weight: 500; }
   #fileInput { display: none; }
 
   #fileInfo {
     display: none;
     margin-top: 16px;
-    padding: 12px 14px;
-    background: #12141a;
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    font-size: 0.9rem;
+    padding: 13px 16px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 0.92rem;
     justify-content: space-between;
     align-items: center;
   }
-  #fileInfo span.name { color: var(--text); }
-  #fileInfo span.size { color: var(--text-dim); }
+  #fileInfo span.name { color: var(--ink); font-weight: 600; }
+  #fileInfo span.size { color: var(--grey); font-weight: 500; }
 
   button#submitBtn {
     width: 100%;
-    margin-top: 18px;
-    padding: 13px;
+    margin-top: 20px;
+    padding: 15px;
     border: none;
-    border-radius: 10px;
-    background: linear-gradient(90deg, var(--accent), #6a4bff);
-    color: white;
-    font-size: 1rem;
-    font-weight: 600;
+    border-radius: 4px;
+    background: var(--red);
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 1.02rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     cursor: pointer;
-    transition: opacity .15s, transform .1s;
+    transition: background .15s;
   }
-  button#submitBtn:disabled { opacity: 0.4; cursor: not-allowed; }
-  button#submitBtn:not(:disabled):hover { transform: translateY(-1px); }
+  button#submitBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+  button#submitBtn:not(:disabled):hover { background: var(--red-dark); }
 
   #status {
-    margin-top: 20px;
+    margin-top: 22px;
     display: none;
   }
-  #status .row { display: flex; align-items: center; gap: 10px; color: var(--text-dim); font-size: 0.9rem; margin-bottom: 12px; }
+  #status .row { display: flex; align-items: center; gap: 10px; color: var(--grey); font-weight: 500; font-size: 0.92rem; margin-bottom: 14px; }
   .spinner {
     width: 16px; height: 16px;
-    border: 2px solid var(--panel-border);
-    border-top-color: var(--accent);
+    border: 2px solid var(--line);
+    border-top-color: var(--red);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     flex-shrink: 0;
@@ -109,75 +135,105 @@
 
   #progressTrack {
     width: 100%;
-    height: 10px;
+    height: 8px;
     border-radius: 999px;
-    background: #12141a;
-    border: 1px solid var(--panel-border);
+    background: var(--paper);
+    border: 1px solid var(--line);
     overflow: hidden;
   }
   #progressFill {
     height: 100%;
     width: 0%;
-    border-radius: 999px;
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    background: var(--red);
     transition: width 0.4s ease;
   }
   #progressPct {
     margin-top: 8px;
     text-align: right;
-    font-size: 0.78rem;
-    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
 
   #result {
     display: none;
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid var(--panel-border);
+    margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
   }
-  #result h3 { margin: 0 0 12px; color: var(--accent-2); font-size: 1rem; }
+  #result h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px;
+    color: var(--ink);
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+  #result h3 svg { flex-shrink: 0; }
   audio { width: 100%; margin-bottom: 14px; }
   a#downloadLink {
     display: block;
     text-align: center;
-    padding: 12px;
-    border-radius: 10px;
-    background: var(--accent-2);
-    color: #06231a;
-    font-weight: 600;
+    padding: 13px;
+    border-radius: 4px;
+    background: var(--red);
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     text-decoration: none;
+    transition: background .15s;
   }
+  a#downloadLink:hover { background: var(--red-dark); }
 
   #errorBox {
     display: none;
-    margin-top: 16px;
-    padding: 12px 14px;
-    background: rgba(255,92,114,0.08);
-    border: 1px solid rgba(255,92,114,0.35);
-    color: var(--danger);
-    border-radius: 10px;
-    font-size: 0.85rem;
+    margin-top: 18px;
+    padding: 13px 15px;
+    background: var(--red-wash);
+    border-left: 3px solid var(--red);
+    color: var(--ink);
+    font-weight: 500;
+    border-radius: 2px;
+    font-size: 0.88rem;
     white-space: pre-wrap;
   }
 
-  footer { margin-top: 28px; color: var(--text-dim); font-size: 0.78rem; text-align: center; }
+  footer {
+    margin-top: 32px;
+    color: var(--grey-light);
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-align: center;
+    max-width: 40ch;
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>🎤 Stemify</h1>
-  <p>Upload a song — get back the instrumental for karaoke.</p>
+  <div class="wordmark">
+    <svg width="34" height="34" viewBox="0 0 32 32" fill="none">
+      <rect x="4" y="13" width="3.6" height="10" rx="1.4" fill="#e8302a"/>
+      <rect x="10.2" y="9" width="3.6" height="14" rx="1.4" fill="#e8302a"/>
+      <rect x="16.4" y="4.5" width="3.6" height="18.5" rx="1.4" fill="#111111"/>
+      <rect x="22.6" y="11" width="3.6" height="12" rx="1.4" fill="#e8302a"/>
+    </svg>
+    <span>Stemify</span>
+  </div>
+  <p>Upload a song. Get back the instrumental, vocals removed.</p>
 </header>
+
+<div class="rule"></div>
 
 <div class="card">
   <div id="dropzone">
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" stroke-width="1.6">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="1.6">
       <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <div>Drag & drop an audio file, or click to browse</div>
+    <div>Drag and drop an audio file, or click to browse</div>
     <div class="hint">MP3, WAV, M4A, FLAC — up to 60MB</div>
   </div>
   <input type="file" id="fileInput" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac,.wma">
@@ -198,13 +254,19 @@
   <div id="errorBox"></div>
 
   <div id="result">
-    <h3>✅ Instrumental ready</h3>
+    <h3>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e8302a" stroke-width="2.2">
+        <circle cx="12" cy="12" r="9.5" stroke-linecap="round"/>
+        <path d="M8 12.5l2.6 2.6L16.5 9" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Instrumental ready
+    </h3>
     <audio id="resultAudio" controls></audio>
     <a id="downloadLink" download>Download MP3</a>
   </div>
 </div>
 
-<footer>Runs Demucs (AI source separation) locally on this server. Larger files take longer to process.</footer>
+<footer>Runs on Demucs (AI source separation) locally on this server. Larger files take longer to process.</footer>
 
 <script>
 const dropzone = document.getElementById('dropzone');
