@@ -41,8 +41,30 @@ cd "d:\Project\Stemify"
 .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 ```
 
-No system-wide `ffmpeg` install is required — a portable ffmpeg binary is
-pulled in automatically via the `imageio-ffmpeg` pip package.
+`ffmpeg` must be on your PATH (Demucs shells out to it). Install once with:
+
+```powershell
+winget install Gyan.FFmpeg
+```
+
+then open a fresh terminal. On Linux use `apt install ffmpeg`, on macOS
+`brew install ffmpeg`.
+
+### Keeping the install lean
+
+After `pip install`, a few large packages get pulled in as transitive
+dependencies of PyTorch that Demucs inference never actually uses. Safe to
+remove to reclaim ~200MB:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip uninstall -y sympy networkx mpmath
+Remove-Item -Recurse -Force .venv\Lib\site-packages\torch\include
+Get-ChildItem -Recurse .venv\Lib\site-packages\torch -Filter *.lib | Remove-Item -Force
+```
+
+Separated output is also capped automatically — only the 10 most recent
+jobs are kept in `outputs/`, and the large intermediate WAV stems are
+deleted as soon as the MP3 is made.
 
 ## Running / hosting it
 

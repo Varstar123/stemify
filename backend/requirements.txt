@@ -1,5 +1,8 @@
+# Requires a system ffmpeg on PATH (not a pip package):
+#   Windows: winget install Gyan.FFmpeg
+#   Debian/Ubuntu: apt install ffmpeg
+#   macOS: brew install ffmpeg
 flask>=3.0
 waitress>=3.0
 demucs
 numpy
-imageio-ffmpeg

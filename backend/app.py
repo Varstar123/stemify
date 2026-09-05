@@ -25,8 +25,6 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
-import imageio_ffmpeg
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
@@ -51,32 +49,62 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 _jobs = {}
 _jobs_lock = threading.Lock()
 
-# Prefer a real system ffmpeg when one is already installed (e.g. Termux's
-# `pkg install ffmpeg` on Android, or apt on Linux) — it matches the host
-# architecture natively. Only fall back to the portable binary bundled via
-# imageio-ffmpeg (Windows-focused prebuilt binaries) if no system ffmpeg is
-# found on PATH.
-_system_ffmpeg = shutil.which("ffmpeg")
-if _system_ffmpeg:
-    _FFMPEG_EXE = Path(_system_ffmpeg)
-else:
-    _FFMPEG_EXE = Path(imageio_ffmpeg.get_ffmpeg_exe())
-    _ffmpeg_dir = str(_FFMPEG_EXE.parent)
-    if _ffmpeg_dir not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
-    _ffmpeg_link = _FFMPEG_EXE.parent / (
-        "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+# Demucs shells out to `ffmpeg` to decode/encode audio, so a system ffmpeg
+# must be available. Install one with `winget install Gyan.FFmpeg` (Windows),
+# `apt install ffmpeg` (Debian/Ubuntu), `brew install ffmpeg` (macOS), or
+# `pkg install ffmpeg` (Termux).
+def _find_ffmpeg():
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    # Fall back to common install locations in case PATH hasn't been
+    # refreshed in the current shell yet (e.g. right after `winget install`).
+    candidates = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links" / "ffmpeg.exe",
+        Path("/usr/bin/ffmpeg"),
+        Path("/usr/local/bin/ffmpeg"),
+        Path("/opt/homebrew/bin/ffmpeg"),
+    ]
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return None
+
+
+_FFMPEG_EXE = _find_ffmpeg()
+if not _FFMPEG_EXE:
+    raise RuntimeError(
+        "ffmpeg not found. Install it: `winget install Gyan.FFmpeg` (Windows) "
+        "or your platform's package manager, then restart the shell."
     )
-    if not _ffmpeg_link.exists():
-        try:
-            shutil.copy(_FFMPEG_EXE, _ffmpeg_link)
-        except OSError:
-            pass
+_FFMPEG_EXE = Path(_FFMPEG_EXE)
+
+# Demucs also calls `ffmpeg` by name internally, so make sure its directory
+# is on PATH for the subprocess we spawn (covers a not-yet-refreshed shell).
+_ffmpeg_dir = str(_FFMPEG_EXE.parent)
+if _ffmpeg_dir not in os.environ.get("PATH", "").split(os.pathsep):
+    os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
 
 def _set_status(job_id, **fields):
     with _jobs_lock:
         _jobs[job_id].update(fields)
+
+
+def _cleanup_old_outputs(keep=10):
+    """Keep only the most recent `keep` job output folders on disk."""
+    try:
+        dirs = sorted(
+            (p for p in OUTPUT_DIR.iterdir() if p.is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for old in dirs[keep:]:
+            shutil.rmtree(old, ignore_errors=True)
+            with _jobs_lock:
+                _jobs.pop(old.name, None)
+    except Exception:
+        pass
 
 
 def _run_separation(job_id, input_path: Path):
@@ -177,7 +205,13 @@ def _run_separation(job_id, input_path: Path):
             str(final_mp3),
         ]
         conv = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-        result_path = final_mp3 if conv.returncode == 0 and final_mp3.exists() else instrumental_wav
+        mp3_ok = conv.returncode == 0 and final_mp3.exists()
+        result_path = final_mp3 if mp3_ok else instrumental_wav
+
+        # Drop the large intermediate WAV stems once we have the mp3 — they're
+        # ~10x the size and no longer needed.
+        if mp3_ok:
+            shutil.rmtree(job_out_dir / DEMUCS_MODEL, ignore_errors=True)
 
         _set_status(
             job_id,
@@ -227,6 +261,8 @@ def create_job():
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         return jsonify({"error": f"Unsupported file type: {ext or 'unknown'}"}), 400
+
+    _cleanup_old_outputs()
 
     job_id = uuid.uuid4().hex
     job_upload_dir = UPLOAD_DIR / job_id
