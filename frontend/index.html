@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stemify — Karaoke Maker</title>
+<title>Stemify — Stem Splitter</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B0B0B'/%3E%3Crect x='4' y='13' width='3.6' height='10' rx='1.4' fill='%23EE3A2F'/%3E%3Crect x='10.2' y='9' width='3.6' height='14' rx='1.4' fill='%23EE3A2F'/%3E%3Crect x='16.4' y='4.5' width='3.6' height='18.5' rx='1.4' fill='%23EE3A2F'/%3E%3Crect x='22.6' y='11' width='3.6' height='12' rx='1.4' fill='%23EE3A2F'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -100,6 +100,34 @@
   #fileInfo span.name { color: var(--ink); font-weight: 600; }
   #fileInfo span.size { color: var(--grey); font-weight: 500; }
 
+  .modes {
+    margin-top: 18px;
+  }
+  .modes-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--grey);
+    margin-bottom: 8px;
+  }
+  .mode-opts { display: flex; flex-direction: column; gap: 6px; }
+  .mode-opt {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    padding: 11px 13px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color .12s, background .12s;
+  }
+  .mode-opt:hover { border-color: var(--grey-light); }
+  .mode-opt.sel { border-color: var(--ink); background: var(--paper); }
+  .mode-opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .mode-opt .m-name { font-weight: 600; font-size: 0.94rem; }
+  .mode-opt .m-desc { color: var(--grey); font-size: 0.82rem; font-weight: 500; }
+
   button#submitBtn {
     width: 100%;
     margin-top: 20px;
@@ -173,7 +201,7 @@
   }
   #result h3 svg { flex-shrink: 0; }
   audio { width: 100%; margin-bottom: 14px; }
-  a#downloadLink {
+  a#downloadLink, a.zipLink {
     display: block;
     text-align: center;
     padding: 13px;
@@ -185,7 +213,29 @@
     text-decoration: none;
     transition: background .15s;
   }
-  a#downloadLink:hover { background: var(--red-dark); }
+  a#downloadLink:hover, a.zipLink:hover { background: var(--red-dark); }
+
+  .stem {
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+  }
+  .stem:first-of-type { border-top: none; }
+  .stem-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .stem-name { font-weight: 700; font-size: 0.95rem; }
+  .stem-dl {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--red);
+    text-decoration: none;
+    border-bottom: 1px solid currentColor;
+  }
+  .stem audio { margin-bottom: 0; }
+  .stems-wrap { margin-bottom: 16px; }
 
   #errorBox {
     display: none;
@@ -222,7 +272,7 @@
     </svg>
     <span>Stemify</span>
   </div>
-  <p>Upload a song. Get back the instrumental, vocals removed.</p>
+  <p>Upload a song. Get back the instrumental, or every stem split out.</p>
 </header>
 
 <div class="rule"></div>
@@ -243,6 +293,27 @@
     <span class="size" id="fileSize"></span>
   </div>
 
+  <div class="modes">
+    <div class="modes-label">Output</div>
+    <div class="mode-opts">
+      <label class="mode-opt sel">
+        <input type="radio" name="mode" value="instrumental" checked>
+        <span class="m-name">Instrumental</span>
+        <span class="m-desc">karaoke track, vocals removed</span>
+      </label>
+      <label class="mode-opt">
+        <input type="radio" name="mode" value="4stem">
+        <span class="m-name">4 stems</span>
+        <span class="m-desc">vocals · drums · bass · other</span>
+      </label>
+      <label class="mode-opt">
+        <input type="radio" name="mode" value="6stem">
+        <span class="m-name">6 stems</span>
+        <span class="m-desc">+ guitar · piano (extra model download)</span>
+      </label>
+    </div>
+  </div>
+
   <button id="submitBtn" disabled>Remove vocals</button>
 
   <div id="status">
@@ -259,14 +330,22 @@
         <circle cx="12" cy="12" r="9.5" stroke-linecap="round"/>
         <path d="M8 12.5l2.6 2.6L16.5 9" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      Instrumental ready
+      <span id="resultTitle">Instrumental ready</span>
     </h3>
-    <audio id="resultAudio" controls></audio>
-    <a id="downloadLink" download>Download MP3</a>
+
+    <div id="singleResult">
+      <audio id="resultAudio" controls></audio>
+      <a id="downloadLink" download>Download MP3</a>
+    </div>
+
+    <div id="multiResult" hidden>
+      <div class="stems-wrap" id="stemsWrap"></div>
+      <a class="zipLink" id="zipLink" download>Download all stems (.zip)</a>
+    </div>
   </div>
 </div>
 
-<footer>Runs on Demucs (AI source separation) locally on this server. Larger files take longer to process.</footer>
+<footer>Runs on Demucs (AI source separation) locally on this server. 4- and 6-stem modes take the same time as instrumental — Demucs computes every stem either way.</footer>
 
 <script>
 const dropzone = document.getElementById('dropzone');
@@ -281,10 +360,28 @@ const progressFill = document.getElementById('progressFill');
 const progressPct = document.getElementById('progressPct');
 const errorBox = document.getElementById('errorBox');
 const resultBox = document.getElementById('result');
+const resultTitle = document.getElementById('resultTitle');
+const singleResult = document.getElementById('singleResult');
+const multiResult = document.getElementById('multiResult');
+const stemsWrap = document.getElementById('stemsWrap');
+const zipLink = document.getElementById('zipLink');
 const resultAudio = document.getElementById('resultAudio');
 const downloadLink = document.getElementById('downloadLink');
 
 let selectedFile = null;
+
+const modeOpts = document.querySelectorAll('.mode-opt');
+modeOpts.forEach(opt => {
+  opt.addEventListener('click', () => {
+    modeOpts.forEach(o => o.classList.remove('sel'));
+    opt.classList.add('sel');
+    opt.querySelector('input').checked = true;
+    submitBtn.textContent = currentMode() === 'instrumental' ? 'Remove vocals' : 'Split stems';
+  });
+});
+function currentMode() {
+  return document.querySelector('input[name="mode"]:checked').value;
+}
 
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
@@ -321,6 +418,7 @@ submitBtn.addEventListener('click', async () => {
 
   const formData = new FormData();
   formData.append('file', selectedFile);
+  formData.append('mode', currentMode());
 
   try {
     const res = await fetch('/api/jobs', { method: 'POST', body: formData });
@@ -328,7 +426,7 @@ submitBtn.addEventListener('click', async () => {
     if (!res.ok) throw new Error(data.error || 'Upload failed');
 
     const jobId = data.job_id;
-    statusText.textContent = 'Separating vocals (this can take a while)...';
+    statusText.textContent = 'Separating (this can take a while)...';
     await pollJob(jobId);
   } catch (err) {
     showError(err.message);
@@ -350,15 +448,44 @@ async function pollJob(jobId) {
     if (data.status === 'done') {
       setProgress(100);
       statusBox.style.display = 'none';
-      const url = `/api/jobs/${jobId}/download`;
-      resultAudio.src = url;
-      downloadLink.href = url;
+      renderResult(jobId, data);
       resultBox.style.display = 'block';
       return;
     }
     statusText.textContent = data.progress || 'Processing...';
     setProgress(data.percent || 0);
   }
+}
+
+function renderResult(jobId, data) {
+  const isMulti = data.mode && data.mode !== 'instrumental' && Array.isArray(data.stems);
+  if (!isMulti) {
+    resultTitle.textContent = 'Instrumental ready';
+    singleResult.hidden = false;
+    multiResult.hidden = true;
+    const url = `/api/jobs/${jobId}/download`;
+    resultAudio.src = url;
+    downloadLink.href = url;
+    return;
+  }
+
+  resultTitle.textContent = `${data.stems.length} stems ready`;
+  singleResult.hidden = true;
+  multiResult.hidden = false;
+  stemsWrap.innerHTML = '';
+  data.stems.forEach(stem => {
+    const previewUrl = `/api/jobs/${jobId}/stems/${stem.key}`;
+    const row = document.createElement('div');
+    row.className = 'stem';
+    row.innerHTML = `
+      <div class="stem-head">
+        <span class="stem-name">${stem.label}</span>
+        <a class="stem-dl" href="${previewUrl}?download=1" download>Download</a>
+      </div>
+      <audio controls preload="none" src="${previewUrl}"></audio>`;
+    stemsWrap.appendChild(row);
+  });
+  zipLink.href = `/api/jobs/${jobId}/download`;
 }
 
 function setProgress(pct) {

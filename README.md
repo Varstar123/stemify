@@ -1,16 +1,26 @@
-# Stemify — Karaoke Maker
+# Stemify — Stem Splitter
 
-Upload a song (MP3/WAV/M4A/FLAC), get back the instrumental with vocals
-removed, using [Demucs](https://github.com/facebookresearch/demucs) (Meta's
-AI music source separation model) running locally on your machine.
+Upload a song (MP3/WAV/M4A/FLAC) and get back either a karaoke instrumental
+or every stem split out, using [Demucs](https://github.com/facebookresearch/demucs)
+(Meta's AI music source separation model) running locally on your machine.
+
+## Output modes
+
+| Mode | Stems | Model |
+|------|-------|-------|
+| **Instrumental** | instrumental (vocals removed) — single MP3 | `htdemucs` |
+| **4 stems** | vocals · drums · bass · other — MP3s + a `.zip` | `htdemucs` |
+| **6 stems** | + guitar · piano | `htdemucs_6s` (extra ~80MB download) |
+
+Demucs computes every stem internally no matter what, so 4- and 6-stem
+modes take the **same time** as instrumental — you just get more files back.
 
 ## How it works
 
-1. You upload an audio file through the web page.
-2. The Flask backend saves it and runs it through Demucs
-   (`htdemucs` model, two-stems mode: vocals vs. everything else).
-3. The "everything else" (no_vocals) stem is converted to MP3 and served
-   back for playback/download.
+1. You upload an audio file through the web page and pick an output mode.
+2. The Flask backend runs it through Demucs, then converts each resulting
+   stem to MP3 (the large intermediate WAVs are deleted right after).
+3. For multi-stem modes the MP3s are also bundled into one `.zip`.
 
 Everything runs locally — no audio leaves your machine.
 

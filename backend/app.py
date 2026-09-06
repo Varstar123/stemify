@@ -1,9 +1,10 @@
 """
-Stemify — vocal removal / karaoke maker.
+Stemify — vocal removal / stem splitter.
 
 Flask web app that accepts an uploaded audio file (mp3, wav, m4a, flac...),
-runs it through Demucs (AI source separation) to strip the vocals, and
-serves back an instrumental (karaoke) track.
+runs it through Demucs (AI source separation), and serves back either a
+karaoke instrumental or the full set of separated stems (drums, bass,
+vocals, other — plus guitar and piano in 6-stem mode).
 
 Run for local hosting with:
     python app.py
@@ -20,6 +21,7 @@ import sys
 import threading
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -29,7 +31,28 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
 FRONTEND_DIR = BASE_DIR / "frontend"
-DEMUCS_MODEL = "htdemucs"  # good quality/speed balance
+
+# Separation modes. Demucs always computes every stem internally; "two_stems"
+# just tells it to merge everything except vocals back into one track, so the
+# instrumental mode is no cheaper — it just returns one file instead of many.
+SEPARATION_MODES = {
+    "instrumental": {
+        "model": "htdemucs",
+        "two_stems": "vocals",
+        "label": "instrumental",
+    },
+    "4stem": {
+        "model": "htdemucs",
+        "two_stems": None,
+        "label": "4 stems",
+    },
+    "6stem": {
+        "model": "htdemucs_6s",  # adds guitar + piano; separate ~80MB model
+        "two_stems": None,
+        "label": "6 stems",
+    },
+}
+DEFAULT_MODE = "instrumental"
 
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac", ".wma"}
 MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60 MB upload cap
@@ -107,24 +130,41 @@ def _cleanup_old_outputs(keep=10):
         pass
 
 
-def _run_separation(job_id, input_path: Path):
+# Friendlier display names / ordering for the stem files Demucs writes.
+_STEM_LABELS = {
+    "no_vocals": "Instrumental",
+    "vocals": "Vocals",
+    "drums": "Drums",
+    "bass": "Bass",
+    "other": "Other",
+    "guitar": "Guitar",
+    "piano": "Piano",
+}
+_STEM_ORDER = ["no_vocals", "vocals", "drums", "bass", "other", "guitar", "piano"]
+
+
+def _wav_to_mp3(src: Path, dst: Path) -> bool:
+    conv = subprocess.run(
+        [str(_FFMPEG_EXE), "-y", "-i", str(src), "-codec:a", "libmp3lame",
+         "-qscale:a", "2", str(dst)],
+        capture_output=True, text=True,
+    )
+    return conv.returncode == 0 and dst.exists()
+
+
+def _run_separation(job_id, input_path: Path, mode: str):
     try:
+        cfg = SEPARATION_MODES[mode]
+        model = cfg["model"]
         _set_status(job_id, status="processing", progress="Starting...", percent=0)
 
         job_out_dir = OUTPUT_DIR / job_id
         job_out_dir.mkdir(parents=True, exist_ok=True)
 
-        cmd = [
-            sys.executable,
-            "-m",
-            "demucs",
-            "--two-stems=vocals",
-            "-n",
-            DEMUCS_MODEL,
-            "-o",
-            str(job_out_dir),
-            str(input_path),
-        ]
+        cmd = [sys.executable, "-m", "demucs", "-n", model, "-o", str(job_out_dir)]
+        if cfg["two_stems"]:
+            cmd.append(f"--two-stems={cfg['two_stems']}")
+        cmd.append(str(input_path))
 
         proc = subprocess.Popen(
             cmd,
@@ -145,7 +185,7 @@ def _run_separation(job_id, input_path: Path):
             stderr_lines.append(line)
             if "Separating track" in line:
                 stage = "separating"
-                _set_status(job_id, progress="Separating vocals...", percent=20)
+                _set_status(job_id, progress="Separating stems...", percent=20)
                 continue
             match = _PERCENT_RE.search(line)
             if not match:
@@ -164,7 +204,7 @@ def _run_separation(job_id, input_path: Path):
             else:
                 _set_status(
                     job_id,
-                    progress=f"Separating vocals... {pct}%",
+                    progress=f"Separating stems... {pct}%",
                     percent=20 + round(pct * 0.75),
                 )
 
@@ -180,46 +220,61 @@ def _run_separation(job_id, input_path: Path):
             return
 
         track_stem = input_path.stem
-        instrumental_wav = job_out_dir / DEMUCS_MODEL / track_stem / "no_vocals.wav"
-        if not instrumental_wav.exists():
+        demucs_dir = job_out_dir / model / track_stem
+        wavs = sorted(demucs_dir.glob("*.wav")) if demucs_dir.is_dir() else []
+        if not wavs:
             _set_status(
                 job_id,
                 status="error",
-                error="Separation finished but output file was not found.",
+                error="Separation finished but no output files were found.",
             )
             return
 
         _set_status(job_id, progress="Converting to mp3...", percent=96)
 
-        # Convert to mp3 for a smaller download.
-        final_mp3 = job_out_dir / f"{track_stem}_instrumental.mp3"
-        ffmpeg_cmd = [
-            str(_FFMPEG_EXE),
-            "-y",
-            "-i",
-            str(instrumental_wav),
-            "-codec:a",
-            "libmp3lame",
-            "-qscale:a",
-            "2",
-            str(final_mp3),
-        ]
-        conv = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-        mp3_ok = conv.returncode == 0 and final_mp3.exists()
-        result_path = final_mp3 if mp3_ok else instrumental_wav
+        stem_dir = job_out_dir / "stems"
+        stem_dir.mkdir(exist_ok=True)
+        stems = []  # [{key, label, filename}]
+        for wav in wavs:
+            key = wav.stem  # "no_vocals", "vocals", "drums", ...
+            label = _STEM_LABELS.get(key, key.title())
+            mp3_name = f"{track_stem} - {label}.mp3"
+            if _wav_to_mp3(wav, stem_dir / mp3_name):
+                stems.append({"key": key, "label": label, "filename": mp3_name})
 
-        # Drop the large intermediate WAV stems once we have the mp3 — they're
-        # ~10x the size and no longer needed.
-        if mp3_ok:
-            shutil.rmtree(job_out_dir / DEMUCS_MODEL, ignore_errors=True)
+        if not stems:
+            _set_status(job_id, status="error", error="MP3 conversion failed.")
+            return
+
+        stems.sort(key=lambda s: _STEM_ORDER.index(s["key"]) if s["key"] in _STEM_ORDER else 99)
+
+        # Drop the large intermediate WAV stems now that we have mp3s.
+        shutil.rmtree(job_out_dir / model, ignore_errors=True)
+
+        if mode == "instrumental":
+            # Single-file result: just the instrumental.
+            only = next((s for s in stems if s["key"] == "no_vocals"), stems[0])
+            result_path = stem_dir / only["filename"]
+            result_name = only["filename"]
+        else:
+            # Bundle every stem into one zip for download.
+            zip_path = job_out_dir / f"{track_stem} - stems.zip"
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+                for s in stems:
+                    zf.write(stem_dir / s["filename"], s["filename"])
+            result_path = zip_path
+            result_name = zip_path.name
 
         _set_status(
             job_id,
             status="done",
             progress="Done",
             percent=100,
+            mode=mode,
+            stems=stems,
+            stem_dir=str(stem_dir),
             result_path=str(result_path),
-            result_name=result_path.name,
+            result_name=result_name,
         )
     except Exception as exc:  # noqa: BLE001
         _set_status(job_id, status="error", error=str(exc))
@@ -262,6 +317,10 @@ def create_job():
     if ext not in ALLOWED_EXTENSIONS:
         return jsonify({"error": f"Unsupported file type: {ext or 'unknown'}"}), 400
 
+    mode = request.form.get("mode", DEFAULT_MODE)
+    if mode not in SEPARATION_MODES:
+        return jsonify({"error": f"Unknown mode: {mode}"}), 400
+
     _cleanup_old_outputs()
 
     job_id = uuid.uuid4().hex
@@ -276,9 +335,12 @@ def create_job():
             "created": time.time(),
             "progress": "Queued",
             "percent": 0,
+            "mode": mode,
         }
 
-    thread = threading.Thread(target=_run_separation, args=(job_id, input_path), daemon=True)
+    thread = threading.Thread(
+        target=_run_separation, args=(job_id, input_path, mode), daemon=True
+    )
     thread.start()
 
     return jsonify({"job_id": job_id}), 202
@@ -296,6 +358,8 @@ def job_status(job_id):
             "progress": job.get("progress"),
             "percent": job.get("percent", 0),
             "error": job.get("error"),
+            "mode": job.get("mode"),
+            "stems": job.get("stems"),
         }
     )
 
@@ -307,6 +371,22 @@ def job_download(job_id):
     if not job or job.get("status") != "done":
         return jsonify({"error": "Result not ready"}), 404
     return send_file(job["result_path"], as_attachment=True, download_name=job["result_name"])
+
+
+@app.route("/api/jobs/<job_id>/stems/<stem_key>", methods=["GET"])
+def job_stem(job_id, stem_key):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if not job or job.get("status") != "done":
+        return jsonify({"error": "Result not ready"}), 404
+    stem = next((s for s in job.get("stems", []) if s["key"] == stem_key), None)
+    if not stem:
+        return jsonify({"error": "Unknown stem"}), 404
+    path = Path(job["stem_dir"]) / stem["filename"]
+    if not path.exists():
+        return jsonify({"error": "Stem file missing"}), 404
+    as_attachment = request.args.get("download") == "1"
+    return send_file(path, as_attachment=as_attachment, download_name=stem["filename"])
 
 
 if __name__ == "__main__":
